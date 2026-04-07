@@ -52,19 +52,21 @@ body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellips
 .table-container{position:relative;z-index:1;padding:0 28px 28px;}
 .table-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;}
 .table-header h2{font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:8px;}
-.table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;}
-table{width:100%;border-collapse:collapse;font-size:.88rem;}
-thead{background:rgba(255,255,255,.04);}
-th{text-align:left;padding:14px 18px;font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);border-bottom:1px solid var(--border);}
-td{padding:14px 18px;border-bottom:1px solid var(--border);vertical-align:top;}
+.table-wrap{background:rgba(255,255,255,0.03);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.08);border-radius:var(--radius);overflow:hidden;}
+table{width:100%;border-collapse:collapse;font-size:0.88rem;}
+thead{background:rgba(255,255,255,0.06);}
+th{text-align:left;padding:16px 18px;font-weight:700;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);border-bottom:1px solid var(--border);}
+td{padding:16px 18px;border-bottom:1px solid var(--border);vertical-align:middle;}
 tr:last-child td{border-bottom:none;}
-tr{transition:background .2s;}
-tr:hover{background:rgba(255,255,255,.03);}
-.order-num{color:var(--accent);font-weight:700;}
-.order-date{color:var(--text-dim);font-size:.8rem;}
-.order-items{display:flex;flex-wrap:wrap;gap:4px;}
-.item-chip{background:rgba(255,255,255,.06);padding:3px 8px;border-radius:6px;font-size:.78rem;white-space:nowrap;}
-.order-total{color:var(--green);font-weight:800;font-size:1rem;}
+tr{transition:background 0.3s;}
+tr:hover{background:rgba(255,255,255,0.05);}
+.order-num{color:var(--accent);font-weight:800;font-variant-numeric:tabular-nums;}
+.order-date{color:var(--text-dim);font-size:0.8rem;}
+.order-items{display:flex;flex-wrap:wrap;gap:8px;}
+.item-chip{background:rgba(255,255,255,0.06);padding:4px 10px;border-radius:8px;font-size:0.8rem;white-space:nowrap;display:flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,0.05);}
+.item-chip span.thumb{width:20px;height:20px;border-radius:4px;overflow:hidden;background:#1a1b23;display:flex;align-items:center;justify-content:center;}
+.item-chip span.thumb img{width:100%;height:100%;object-fit:cover;}
+.order-total{color:var(--green);font-weight:800;font-size:1.05rem;text-shadow:0 0 10px var(--green-glow);}
 .order-cash{font-weight:600;}
 .order-change{color:var(--cyan);font-weight:600;}
 .no-data{text-align:center;padding:60px 20px;color:var(--text-dim);}
@@ -308,7 +310,15 @@ function renderPage() {
         ${sorted.map(order => {
           const d = new Date(order.order_date);
           const dateStr = d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'}) + ' — ' + d.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit', hour12:true});
-          const itemsHtml = (order.items || []).map(item => `<span class="item-chip">${item.emoji} ${item.product_name} ×${item.quantity}</span>`).join('');
+          const itemsHtml = (order.items || []).map(item => {
+            const thumb = item.img || '';
+            const emoji = item.emoji || '🍔';
+            return `
+              <span class="item-chip">
+                <span class="thumb">${thumb ? `<img src="${thumb}" alt="">` : emoji}</span>
+                ${item.product_name} ×${item.quantity}
+              </span>`;
+          }).join('');
           return `
             <tr id="row-${order.id}">
               <td class="order-num">${escapeHtml(order.order_number)}</td>
