@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POS — Point of Sale</title>
+<meta name="description" content="NavBech Restobar Point of Sale System — fast, modern, and fully offline POS.">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ─── Reset & Base ─────────────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --bg:#0f1117;--surface:rgba(255,255,255,.06);--surface2:rgba(255,255,255,.1);
+  --border:rgba(255,255,255,.08);--text:#e4e4e7;--text-dim:#9ca3af;
+  --accent:#6366f1;--accent-glow:rgba(99,102,241,.35);
+  --green:#22c55e;--green-glow:rgba(34,197,94,.3);
+  --red:#ef4444;--orange:#f59e0b;--cyan:#06b6d4;
+  --radius:14px;
+}
+html{font-size:14px;}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
+
+/* animated gradient bg */
+body::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse at 20% 0%,rgba(99,102,241,.12) 0%,transparent 60%),radial-gradient(ellipse at 80% 100%,rgba(6,182,212,.08) 0%,transparent 50%);pointer-events:none;z-index:0;}
+
+/* ─── Layout ───────────────────────────────────────────────── */
+.app{position:relative;z-index:1;display:grid;grid-template-columns:1fr 380px;grid-template-rows:auto 1fr;height:100vh;}
+.topbar{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);backdrop-filter:blur(20px);background:rgba(15,17,23,.7);}
+.topbar h1{font-size:1.3rem;font-weight:800;display:flex;align-items:center;gap:10px;}
+.topbar h1 span.icon{font-size:1.5rem;}
+.topbar .clock{font-size:.85rem;color:var(--text-dim);font-variant-numeric:tabular-nums;}
+.topbar .status-badge{display:flex;align-items:center;gap:6px;background:var(--green-glow);color:var(--green);padding:4px 12px;border-radius:20px;font-size:.75rem;font-weight:600;}
+.topbar .status-badge::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+
+/* ─── Menu Panel ──────────────────────────────────────────── */
+.menu-panel{overflow-y:auto;padding:24px 28px;display:flex;flex-direction:column;gap:18px;}
+.category-tabs{display:flex;gap:8px;flex-wrap:wrap;}
+.cat-tab{padding:8px 18px;border:1px solid var(--border);border-radius:30px;background:transparent;color:var(--text-dim);font-family:inherit;font-size:.82rem;font-weight:600;cursor:pointer;transition:all .25s;}
+.cat-tab:hover{border-color:var(--accent);color:var(--text);}
+.cat-tab.active{background:var(--accent);border-color:var(--accent);color:#fff;box-shadow:0 0 18px var(--accent-glow);}
+
+.product-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;}
+.product-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 14px;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;transition:all .25s;position:relative;overflow:hidden;}
+.product-card:hover{transform:translateY(-3px);border-color:var(--accent);box-shadow:0 8px 30px rgba(0,0,0,.3);}
+.product-card .emoji{font-size:2.6rem;filter:drop-shadow(0 2px 6px rgba(0,0,0,.3));}
+.product-card .p-name{font-weight:600;font-size:.9rem;text-align:center;}
+.product-card .p-price{color:var(--accent);font-weight:700;font-size:1rem;}
+.product-card .add-btn{width:100%;padding:8px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-family:inherit;font-weight:600;font-size:.8rem;cursor:pointer;transition:all .2s;}
+.product-card .add-btn:hover{background:#818cf8;box-shadow:0 0 16px var(--accent-glow);}
+.product-card .add-btn:active{transform:scale(.95);}
+
+/* add-to-cart flash */
+.product-card.flash::after{content:'✓ Added';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(34,197,94,.85);color:#fff;font-weight:700;font-size:1.1rem;border-radius:var(--radius);animation:flashIn .5s ease forwards;}
+@keyframes flashIn{0%{opacity:0;transform:scale(.8);}30%{opacity:1;transform:scale(1);}100%{opacity:0;transform:scale(1);}}
+
+/* ─── Cart Panel ──────────────────────────────────────────── */
+.cart-panel{border-left:1px solid var(--border);display:flex;flex-direction:column;background:rgba(15,17,23,.5);backdrop-filter:blur(24px);}
+.cart-header{padding:20px 22px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.cart-header h2{font-size:1.1rem;font-weight:700;display:flex;align-items:center;gap:8px;}
+.cart-badge{background:var(--accent);color:#fff;font-size:.7rem;font-weight:700;padding:2px 8px;border-radius:20px;min-width:22px;text-align:center;}
+.clear-btn{background:transparent;border:1px solid var(--border);color:var(--text-dim);padding:5px 12px;border-radius:8px;font-family:inherit;font-size:.75rem;cursor:pointer;transition:all .2s;}
+.clear-btn:hover{border-color:var(--red);color:var(--red);}
+
+.cart-items{flex:1;overflow-y:auto;padding:14px 22px;}
+.cart-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text-dim);gap:8px;font-size:.9rem;}
+.cart-empty .empty-icon{font-size:3rem;opacity:.3;}
+
+.cart-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);animation:slideIn .3s ease;}
+@keyframes slideIn{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:translateX(0);}}
+.cart-item .ci-emoji{font-size:1.6rem;}
+.cart-item .ci-info{flex:1;}
+.cart-item .ci-name{font-weight:600;font-size:.85rem;}
+.cart-item .ci-price{font-size:.78rem;color:var(--text-dim);}
+.cart-item .ci-controls{display:flex;align-items:center;gap:6px;}
+.ci-controls button{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:.9rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .2s;font-family:inherit;}
+.ci-controls button:hover{border-color:var(--accent);color:var(--accent);}
+.ci-controls .qty{font-weight:700;font-size:.9rem;min-width:20px;text-align:center;}
+.cart-item .ci-total{font-weight:700;font-size:.9rem;min-width:55px;text-align:right;color:var(--accent);}
+.cart-item .ci-remove{background:transparent;border:none;color:var(--text-dim);cursor:pointer;font-size:1rem;padding:4px;transition:color .2s;}
+.cart-item .ci-remove:hover{color:var(--red);}
+
+/* cart footer */
+.cart-footer{padding:18px 22px;border-top:1px solid var(--border);background:rgba(0,0,0,.2);}
+.cart-summary{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+.cart-summary .row{display:flex;justify-content:space-between;font-size:.85rem;}
+.cart-summary .row.total{font-size:1.15rem;font-weight:800;color:var(--green);border-top:1px dashed var(--border);padding-top:8px;margin-top:4px;}
+.cart-footer .payment-row{display:flex;gap:8px;margin-bottom:12px;}
+.cart-footer .payment-row input{flex:1;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;font-size:.95rem;font-weight:600;outline:none;transition:border-color .2s;}
+.cart-footer .payment-row input:focus{border-color:var(--accent);}
+.cart-footer .payment-row input::placeholder{color:var(--text-dim);font-weight:400;}
+.change-display{font-size:.85rem;color:var(--text-dim);margin-bottom:12px;min-height:22px;}
+.change-display span{color:var(--green);font-weight:700;}
+.change-display .insufficient{color:var(--red);}
+.checkout-btn{width:100%;padding:14px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--accent),#8b5cf6);color:#fff;font-family:inherit;font-size:1rem;font-weight:700;cursor:pointer;transition:all .3s;letter-spacing:.3px;}
+.checkout-btn:hover{box-shadow:0 0 30px var(--accent-glow);transform:translateY(-1px);}
+.checkout-btn:active{transform:scale(.98);}
+.checkout-btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none;}
+
+/* ─── Order Review Modal (Complete Sale popup) ────────────── */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:100;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s;}
+.modal-overlay.show{opacity:1;pointer-events:all;}
+.review-modal{background:#1a1b23;border:1px solid var(--border);border-radius:18px;width:440px;max-height:90vh;overflow-y:auto;padding:30px;transform:scale(.9);transition:transform .3s;box-shadow:0 25px 60px rgba(0,0,0,.5);}
+.modal-overlay.show .review-modal{transform:scale(1);}
+.review-modal h2{text-align:center;font-size:1.2rem;margin-bottom:4px;}
+.review-modal .rm-subtitle{text-align:center;color:var(--text-dim);font-size:.8rem;margin-bottom:18px;}
+.review-modal .rm-items{margin-bottom:14px;}
+.review-modal .rm-item{display:flex;justify-content:space-between;font-size:.88rem;padding:6px 0;border-bottom:1px solid var(--border);}
+.review-modal .rm-item:last-child{border-bottom:none;}
+.review-modal .rm-item .rm-qty{color:var(--text-dim);margin-left:6px;}
+.review-modal .rm-divider{border:none;border-top:1px dashed var(--border);margin:12px 0;}
+.review-modal .rm-totals{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;}
+.review-modal .rm-totals .row{display:flex;justify-content:space-between;font-size:.88rem;}
+.review-modal .rm-totals .row.grand{font-size:1.15rem;font-weight:800;color:var(--green);padding-top:8px;border-top:2px solid var(--border);}
+.review-modal .rm-totals .row.change-row{color:var(--cyan);font-weight:600;}
+.review-actions{display:flex;gap:10px;margin-top:20px;}
+.review-actions button{flex:1;padding:13px;border:none;border-radius:10px;font-family:inherit;font-weight:600;font-size:.92rem;cursor:pointer;transition:all .2s;}
+.btn-cancel{background:var(--surface2);color:var(--text);}
+.btn-cancel:hover{background:rgba(255,255,255,.15);}
+.btn-continue{background:linear-gradient(135deg,var(--green),#16a34a);color:#fff;}
+.btn-continue:hover{box-shadow:0 0 24px var(--green-glow);}
+.btn-continue:disabled{opacity:.5;cursor:not-allowed;box-shadow:none;}
+
+/* ─── Receipt Modal (after Continue — for printing) ───────── */
+.receipt-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(6px);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .3s;}
+.receipt-overlay.show{opacity:1;pointer-events:all;}
+.receipt-modal{background:#1a1b23;border:1px solid var(--border);border-radius:18px;width:400px;max-height:90vh;overflow-y:auto;padding:30px;transform:scale(.9);transition:transform .3s;box-shadow:0 25px 60px rgba(0,0,0,.5);}
+.receipt-overlay.show .receipt-modal{transform:scale(1);}
+.receipt-modal h2{text-align:center;font-size:1.2rem;margin-bottom:4px;}
+.receipt-modal .r-subtitle{text-align:center;color:var(--text-dim);font-size:.78rem;margin-bottom:16px;}
+.receipt-modal .r-info{display:flex;justify-content:space-between;font-size:.78rem;color:var(--text-dim);margin-bottom:14px;padding-bottom:10px;border-bottom:1px dashed var(--border);}
+.receipt-modal .r-items{margin-bottom:14px;}
+.receipt-modal .r-item{display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0;}
+.receipt-modal .r-item .r-qty{color:var(--text-dim);margin-left:6px;}
+.receipt-modal .r-divider{border:none;border-top:1px dashed var(--border);margin:10px 0;}
+.receipt-modal .r-totals{display:flex;flex-direction:column;gap:4px;margin-bottom:14px;}
+.receipt-modal .r-totals .row{display:flex;justify-content:space-between;font-size:.85rem;}
+.receipt-modal .r-totals .row.grand{font-size:1.1rem;font-weight:800;color:var(--green);padding-top:6px;border-top:2px solid var(--border);}
+.receipt-modal .r-totals .row.change-row{color:var(--cyan);font-weight:600;}
+.receipt-modal .r-footer{text-align:center;color:var(--text-dim);font-size:.75rem;margin-top:16px;padding-top:10px;border-top:1px dashed var(--border);}
+.receipt-modal .r-saved{text-align:center;background:var(--green-glow);color:var(--green);padding:8px;border-radius:8px;font-size:.82rem;font-weight:600;margin-bottom:14px;}
+.receipt-actions{display:flex;gap:10px;margin-top:18px;}
+.receipt-actions button{flex:1;padding:12px;border:none;border-radius:10px;font-family:inherit;font-weight:600;font-size:.9rem;cursor:pointer;transition:all .2s;}
+.btn-print{background:var(--accent);color:#fff;}
+.btn-print:hover{box-shadow:0 0 20px var(--accent-glow);}
+.btn-new{background:linear-gradient(135deg,var(--green),#16a34a);color:#fff;}
+.btn-new:hover{box-shadow:0 0 20px var(--green-glow);}
+
+/* ─── Responsive ──────────────────────────────────────────── */
+@media(max-width:900px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr auto;}
+  .cart-panel{border-left:none;border-top:1px solid var(--border);max-height:50vh;}
+}
+
+/* ─── Print styles ────────────────────────────────────────── */
+@media print{
+  body *{visibility:hidden;}
+  .receipt-modal,.receipt-modal *{visibility:visible!important;}
+  .receipt-modal{position:fixed;left:0;top:0;width:100%;border:none;border-radius:0;box-shadow:none;background:#fff;color:#000;padding:20px;}
+  .receipt-modal h2{color:#000;}
+  .receipt-modal .r-totals .row.grand{color:#000;}
+  .receipt-modal .r-totals .row.change-row{color:#333;}
+  .receipt-modal .r-saved{background:#eee;color:#333;}
+  .receipt-actions{display:none!important;}
+}
+
+/* scrollbar */
+::-webkit-scrollbar{width:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--surface2);border-radius:10px;}
+</style>
+</head>
+<body>
+
+<!-- ─── App Shell ──────────────────────────────────────────── -->
+<div class="app">
+
+  <!-- Top Bar -->
+  <header class="topbar">
+    <h1><span class="icon">🛒</span>NavBech Restobar</h1>
+    <div style="display:flex;align-items:center;gap:20px;">
+      <div class="status-badge">ONLINE</div>
+      <div class="clock" id="clock"></div>
+    </div>
+  </header>
+
+  <!-- Menu Panel -->
+  <main class="menu-panel">
+    <div class="category-tabs" id="categoryTabs"></div>
+    <div class="product-grid" id="productGrid"></div>
+  </main>
+
+  <!-- Cart Panel -->
+  <aside class="cart-panel">
+    <div class="cart-header">
+      <h2>🛒 Cart <span class="cart-badge" id="cartBadge">0</span></h2>
+      <button class="clear-btn" id="clearCartBtn">Clear All</button>
+    </div>
+    <div class="cart-items" id="cartItems">
+      <div class="cart-empty" id="cartEmpty">
+        <div class="empty-icon">🛒</div>
+        <div>Your cart is empty</div>
+        <div style="font-size:.78rem;">Tap a product to add it</div>
+      </div>
+    </div>
+    <div class="cart-footer">
+      <div class="cart-summary">
+        <div class="row total"><span>Total</span><span id="totalDisplay">₱0.00</span></div>
+      </div>
+      <div class="payment-row">
+        <input type="number" id="cashInput" placeholder="Cash tendered (₱)" min="0" oninput="calcChange()">
+      </div>
+      <div class="change-display" id="changeDisplay"></div>
+      <button class="checkout-btn" id="checkoutBtn" onclick="completeSale()" disabled>Complete Sale</button>
+    </div>
+  </aside>
+</div>
+
+<!-- ─── Order Review Modal (popup after Complete Sale) ─────── -->
+<div class="modal-overlay" id="reviewModal">
+  <div class="review-modal">
+    <h2>📋 Order Summary</h2>
+    <p class="rm-subtitle">Review your order before confirming</p>
+    <div class="rm-items" id="reviewItems"></div>
+    <hr class="rm-divider">
+    <div class="rm-totals" id="reviewTotals"></div>
+    <div class="review-actions">
+      <button class="btn-cancel" id="cancelReviewBtn">✕ Cancel</button>
+      <button class="btn-continue" id="continueBtn">✓ Confirm & Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Receipt Modal (shown after saving — for printing) ── -->
+<div class="receipt-overlay" id="receiptOverlay">
+  <div class="receipt-modal" id="receiptContent">
+    <div class="r-saved" id="savedBadge">✅ Order saved successfully!</div>
+    <h2>🧾 NavBech Restobar</h2>
+    <p class="r-subtitle">Official Receipt</p>
+    <div class="r-info">
+      <span id="receiptDate"></span>
+      <span id="receiptId"></span>
+    </div>
+    <div class="r-items" id="receiptItems"></div>
+    <hr class="r-divider">
+    <div class="r-totals" id="receiptTotals"></div>
+    <div class="r-footer">Thank you for your purchase!<br>Visit again soon 🙂</div>
+    <div class="receipt-actions">
+      <button class="btn-print" id="printReceiptBtn">🖨️ Print Receipt</button>
+      <button class="btn-new" id="newSaleBtn">＋ New Sale</button>
+    </div>
+  </div>
+</div>
+
+<!-- History Toggle -->
+<a href="history.html" class="history-toggle" id="historyToggle" style="position:fixed;bottom:24px;left:24px;z-index:50;padding:10px 18px;border-radius:12px;border:1px solid var(--border);background:var(--surface);backdrop-filter:blur(12px);color:var(--text);font-family:inherit;font-size:.85rem;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;transition:all .25s;text-decoration:none;">
+  📋 History <span class="h-count" id="historyCount" style="background:var(--accent);color:#fff;font-size:.7rem;padding:2px 7px;border-radius:10px;">0</span>
+</a>
+
+<script>
+// ─── Product Data ───────────────────────────────────────────
+const products = [
+  // Meals
+  {id:1,  name:"Classic Burger",   emoji:"🍔", price:89,  category:"Meals"},
+  {id:2,  name:"Cheeseburger",     emoji:"🍔", price:109, category:"Meals"},
+  {id:3,  name:"Chicken Rice",     emoji:"🍗", price:99,  category:"Meals"},
+  {id:4,  name:"Pork Adobo",      emoji:"🥘", price:110, category:"Meals"},
+  {id:5,  name:"Spaghetti",       emoji:"🍝", price:85,  category:"Snacks"},
+  {id:6,  name:"Fried Chicken",   emoji:"🍗", price:95,  category:"Meals"},
+  {id:7,  name:"Beef Steak",      emoji:"🥩", price:150, category:"Meals"},
+  {id:8,  name:"Fish Fillet",     emoji:"🐟", price:120, category:"Meals"},
+  // Snacks
+  {id:9,  name:"French Fries",    emoji:"🍟", price:49,  category:"Snacks"},
+  {id:10, name:"Hotdog Sandwich", emoji:"🌭", price:39,  category:"Snacks"},
+  {id:11, name:"Nachos",          emoji:"🧀", price:55,  category:"Snacks"},
+  {id:12, name:"Pizza Slice",     emoji:"🍕", price:65,  category:"Snacks"},
+  {id:13, name:"Onion Rings",     emoji:"🧅", price:45,  category:"Snacks"},
+  {id:14, name:"Chicken Nuggets", emoji:"🍗", price:60,  category:"Meals"},
+  // Drinks
+  {id:15, name:"Iced Coffee",     emoji:"☕", price:59,  category:"Drinks"},
+  {id:16, name:"Milk Tea",        emoji:"🧋", price:69,  category:"Drinks"},
+  {id:17, name:"Fresh Juice",     emoji:"🧃", price:55,  category:"Drinks"},
+  {id:18, name:"Soft Drink",      emoji:"🥤", price:35,  category:"Drinks"},
+  {id:19, name:"Bottled Water",   emoji:"💧", price:20,  category:"Drinks"},
+  {id:20, name:"Lemonade",        emoji:"🍋", price:45,  category:"Drinks"},
+  // Desserts
+  {id:21, name:"Ice Cream",       emoji:"🍦", price:45,  category:"Desserts"},
+  {id:22, name:"Cake Slice",      emoji:"🍰", price:75,  category:"Desserts"},
+  {id:23, name:"Donut",           emoji:"🍩", price:35,  category:"Desserts"},
+  {id:24, name:"Brownie",         emoji:"🍫", price:55,  category:"Desserts"},
+  {id:25, name:"Fruit Salad",     emoji:"🍓", price:60,  category:"Desserts"},
+];
+
+let cart = {};
+let activeCategory = "All";
+let pendingOrder = null;
+
+// ─── localStorage helpers ───────────────────────────────────
+function getOrders() {
+  try { return JSON.parse(localStorage.getItem('pos_orders')) || []; }
+  catch { return []; }
+}
+function saveOrders(orders) {
+  localStorage.setItem('pos_orders', JSON.stringify(orders));
+}
+function getNextTxCounter() {
+  const orders = getOrders();
+  if (orders.length === 0) return 1;
+  const maxNum = Math.max(...orders.map(o => {
+    const m = o.order_number.match(/(\d+)$/);
+    return m ? parseInt(m[1]) : 0;
+  }));
+  return maxNum + 1;
+}
+
+// ─── Clock ──────────────────────────────────────────────────
+function tickClock(){
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleDateString('en-PH',{weekday:'short',month:'short',day:'numeric',year:'numeric'}) + '  •  ' + now.toLocaleTimeString('en-PH',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+tickClock(); setInterval(tickClock,1000);
+
+// ─── Categories ─────────────────────────────────────────────
+const categories = ["All", ...new Set(products.map(p=>p.category))];
+const catEmojis = {All:"🏷️",Meals:"🍽️",Snacks:"🍟",Drinks:"🥤",Desserts:"🍰"};
+
+function renderCategories(){
+  const el = document.getElementById('categoryTabs');
+  el.innerHTML = categories.map(c=>`<button class="cat-tab${c===activeCategory?' active':''}" data-cat="${c}">${catEmojis[c]||''} ${c}</button>`).join('');
+  el.querySelectorAll('.cat-tab').forEach(btn => {
+    btn.addEventListener('click', () => filterCategory(btn.dataset.cat));
+  });
+}
+
+function filterCategory(cat){
+  activeCategory=cat;
+  renderCategories();
+  renderProducts();
+}
+
+// ─── Products ───────────────────────────────────────────────
+function renderProducts(){
+  const grid = document.getElementById('productGrid');
+  const filtered = activeCategory==='All' ? products : products.filter(p=>p.category===activeCategory);
+  grid.innerHTML = filtered.map(p=>`
+    <div class="product-card" id="card-${p.id}">
+      <div class="emoji">${p.emoji}</div>
+      <div class="p-name">${p.name}</div>
+      <div class="p-price">₱${p.price.toFixed(2)}</div>
+      <button class="add-btn" data-id="${p.id}">+ Add to Cart</button>
+    </div>
+  `).join('');
+  grid.querySelectorAll('.add-btn').forEach(btn => {
+    btn.addEventListener('click', () => addToCart(parseInt(btn.dataset.id)));
+  });
+}
+
+// ─── Cart Logic ─────────────────────────────────────────────
+function addToCart(id){
+  cart[id] = (cart[id]||0) + 1;
+  const card = document.getElementById('card-'+id);
+  card.classList.add('flash');
+  setTimeout(()=>card.classList.remove('flash'),500);
+  renderCart();
+}
+
+function changeQty(id, delta){
+  cart[id] = (cart[id]||0) + delta;
+  if(cart[id] <= 0) delete cart[id];
+  renderCart();
+}
+
+function removeFromCart(id){
+  delete cart[id];
+  renderCart();
+}
+
+function clearCart(){
+  cart = {};
+  document.getElementById('cashInput').value = '';
+  renderCart();
+}
+
+function getCartData(){
+  const items = Object.entries(cart).map(([id,qty])=>{
+    const p = products.find(x=>x.id===+id);
+    return {...p, qty, lineTotal: p.price * qty};
+  });
+  const total = items.reduce((s,i)=>s+i.lineTotal,0);
+  const count = items.reduce((s,i)=>s+i.qty,0);
+  return {items, total, count};
+}
+
+function renderCart(){
+  const {items, total, count} = getCartData();
+  const itemsEl = document.getElementById('cartItems');
+
+  document.getElementById('cartBadge').textContent = count;
+  document.getElementById('totalDisplay').textContent = '₱'+total.toFixed(2);
+
+  if(items.length === 0){
+    itemsEl.innerHTML = `<div class="cart-empty"><div class="empty-icon">🛒</div><div>Your cart is empty</div><div style="font-size:.78rem;">Tap a product to add it</div></div>`;
+    document.getElementById('checkoutBtn').disabled = true;
+  } else {
+    itemsEl.innerHTML = items.map(i=>`
+      <div class="cart-item">
+        <div class="ci-emoji">${i.emoji}</div>
+        <div class="ci-info">
+          <div class="ci-name">${i.name}</div>
+          <div class="ci-price">₱${i.price.toFixed(2)} each</div>
+        </div>
+        <div class="ci-controls">
+          <button data-id="${i.id}" data-delta="-1">−</button>
+          <span class="qty">${i.qty}</span>
+          <button data-id="${i.id}" data-delta="1">+</button>
+        </div>
+        <div class="ci-total">₱${i.lineTotal.toFixed(2)}</div>
+        <button class="ci-remove" data-remove="${i.id}">🗑</button>
+      </div>
+    `).join('');
+
+    // Bind qty buttons
+    itemsEl.querySelectorAll('.ci-controls button').forEach(btn => {
+      btn.addEventListener('click', () => changeQty(parseInt(btn.dataset.id), parseInt(btn.dataset.delta)));
+    });
+    // Bind remove buttons
+    itemsEl.querySelectorAll('.ci-remove').forEach(btn => {
+      btn.addEventListener('click', () => removeFromCart(parseInt(btn.dataset.remove)));
+    });
+
+    document.getElementById('checkoutBtn').disabled = false;
+  }
+  calcChange();
+}
+
+// ─── Payment ────────────────────────────────────────────────
+function calcChange(){
+  const {total, count} = getCartData();
+  const cash = parseFloat(document.getElementById('cashInput').value) || 0;
+  const el = document.getElementById('changeDisplay');
+  if(count === 0 || cash === 0){
+    el.innerHTML = '';
+    return;
+  }
+  if(cash >= total){
+    el.innerHTML = `Change: <span>₱${(cash - total).toFixed(2)}</span>`;
+  } else {
+    el.innerHTML = `<span class="insufficient">Insufficient — need ₱${(total - cash).toFixed(2)} more</span>`;
+  }
+}
+
+// ─── Complete Sale → Show Review Popup ──────────────────────
+function completeSale(){
+  const {items, total, count} = getCartData();
+  if(count === 0) return;
+
+  const cash = parseFloat(document.getElementById('cashInput').value) || 0;
+  if(cash < total){
+    alert('Insufficient cash! Need at least ₱' + total.toFixed(2));
+    return;
+  }
+  const change = cash - total;
+  const txCounter = getNextTxCounter();
+  const txId = 'TXN-' + String(txCounter).padStart(5,'0');
+
+  pendingOrder = {items, total, cash, change, txId, date: new Date().toISOString()};
+
+  // Populate the review modal
+  document.getElementById('reviewItems').innerHTML = items.map(i=>`
+    <div class="rm-item">
+      <span>${i.emoji} ${i.name} <span class="rm-qty">×${i.qty}</span></span>
+      <span>₱${i.lineTotal.toFixed(2)}</span>
+    </div>
+  `).join('');
+
+  document.getElementById('reviewTotals').innerHTML = `
+    <div class="row grand"><span>Total</span><span>₱${total.toFixed(2)}</span></div>
+    <div class="row"><span>Cash Tendered</span><span>₱${cash.toFixed(2)}</span></div>
+    <div class="row change-row"><span>Change</span><span>₱${change.toFixed(2)}</span></div>
+  `;
+
+  document.getElementById('reviewModal').classList.add('show');
+}
+
+function closeReviewModal(){
+  document.getElementById('reviewModal').classList.remove('show');
+  pendingOrder = null;
+}
+
+// ─── Confirm & Save to localStorage ─────────────────────────
+function confirmAndSave(){
+  if(!pendingOrder) return;
+
+  const btn = document.getElementById('continueBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Saving...';
+
+  // Save to localStorage
+  const orders = getOrders();
+  const orderRecord = {
+    id: Date.now(),
+    order_number: pendingOrder.txId,
+    total: pendingOrder.total,
+    cash_tendered: pendingOrder.cash,
+    change_amount: pendingOrder.change,
+    order_date: pendingOrder.date,
+    items: pendingOrder.items.map(i => ({
+      product_name: i.name,
+      emoji: i.emoji,
+      price: i.price,
+      quantity: i.qty,
+      line_total: i.lineTotal
+    }))
+  };
+  orders.push(orderRecord);
+  saveOrders(orders);
+
+  // Close review modal
+  document.getElementById('reviewModal').classList.remove('show');
+  btn.disabled = false;
+  btn.textContent = '✓ Confirm & Save';
+
+  // Update history count
+  updateHistoryCount();
+
+  // Build receipt
+  const o = pendingOrder;
+  const d = new Date(o.date);
+  document.getElementById('receiptDate').textContent = d.toLocaleString('en-PH');
+  document.getElementById('receiptId').textContent = o.txId;
+  document.getElementById('receiptItems').innerHTML = o.items.map(i=>`
+    <div class="r-item">
+      <span>${i.emoji} ${i.name} <span class="r-qty">×${i.qty}</span></span>
+      <span>₱${i.lineTotal.toFixed(2)}</span>
+    </div>
+  `).join('');
+  document.getElementById('receiptTotals').innerHTML = `
+    <div class="row grand"><span>Total</span><span>₱${o.total.toFixed(2)}</span></div>
+    <div class="row"><span>Cash Tendered</span><span>₱${o.cash.toFixed(2)}</span></div>
+    <div class="row change-row"><span>Change</span><span>₱${o.change.toFixed(2)}</span></div>
+  `;
+
+  // Show receipt modal
+  document.getElementById('receiptOverlay').classList.add('show');
+  pendingOrder = null;
+}
+
+// ─── Print Receipt ──────────────────────────────────────────
+function printReceipt(){
+  window.print();
+}
+
+// ─── New Transaction ────────────────────────────────────────
+function newTransaction(){
+  document.getElementById('receiptOverlay').classList.remove('show');
+  cart = {};
+  document.getElementById('cashInput').value = '';
+  renderCart();
+}
+
+// ─── History count ──────────────────────────────────────────
+function updateHistoryCount(){
+  const orders = getOrders();
+  document.getElementById('historyCount').textContent = orders.length;
+}
+
+// ─── Event Listeners ────────────────────────────────────────
+document.getElementById('clearCartBtn').addEventListener('click', clearCart);
+document.getElementById('cashInput').addEventListener('input', calcChange);
+document.getElementById('checkoutBtn').addEventListener('click', completeSale);
+document.getElementById('cancelReviewBtn').addEventListener('click', closeReviewModal);
+document.getElementById('continueBtn').addEventListener('click', confirmAndSave);
+document.getElementById('printReceiptBtn').addEventListener('click', printReceipt);
+document.getElementById('newSaleBtn').addEventListener('click', newTransaction);
+
+// Close modals on overlay click
+document.getElementById('reviewModal').addEventListener('click', function(e){
+  if(e.target === this) closeReviewModal();
+});
+document.getElementById('receiptOverlay').addEventListener('click', function(e){
+  if(e.target === this) newTransaction();
+});
+
+// ─── Init ───────────────────────────────────────────────────
+renderCategories();
+renderProducts();
+renderCart();
+updateHistoryCount();
+</script>
+
+</body>
+</html>
